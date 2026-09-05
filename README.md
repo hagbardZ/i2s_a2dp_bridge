@@ -3,6 +3,7 @@ You can use a M5 Atom Echo and connect it to the Martendo32.
 Just put the Bluetooth Speaker / Headphones in pairing mode, and press the pairing button on the M5.
 Once paired, it will re-connect on boot to the last paired device.
 
+<img width="796" height="284" alt="image" src="https://github.com/user-attachments/assets/905247ed-44c6-47ca-95da-ff6137382512" />
 
 
 
