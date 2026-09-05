@@ -1,5 +1,6 @@
 This is a i2s to Bluetooth bridge for Martendo32 or other retro-go based devices.
-You can use a M5 Atom Echo and connect it to the Martendo32.
+You can enjoy fine stereo sound with the Martendo32 Mp3 Player App ;)
+Simply use an M5 Atom Echo and connect it to the Martendo32.
 Just put the Bluetooth Speaker / Headphones in pairing mode, and press the pairing button on the M5.
 Once paired, it will re-connect on boot to the last paired device.
 
