@@ -40,7 +40,7 @@ static int16_t           read_buf[I2S_READ_BYTES / 2];
 static int16_t           resampled[4096];
 static float             resample_step;                 // input frames per output frame (adaptive)
 static float             src_pos = 0.0f;                // resampler phase (input frames)
-static int16_t           last_sent_frame[2] = {0, 0};   // last PCM frame sent (for restore-fill)
+static float             servo_scale = 1.0f;            // buffer-level rate trim (1.0 = nominal)
 
 // ── Last-device persistence ───────────────────────────────────
 // Persist the current sink's address to NVS under the exact namespace/key the
@@ -98,9 +98,15 @@ static int32_t a2dp_callback(uint8_t *data, int32_t length)
     // a NULL destination, which crashed the M5 mid-stream — guard it here.
     if (data == nullptr || length <= 0)
         return 0;
-    int32_t got = xStreamBufferReceive(a2dp_buf, data, length, 0);
-    sink_frames_consumed += got / 4;
-    return got;
+    int32_t got = xStreamBufferReceive(a2dp_buf, data, length, pdMS_TO_TICKS(5));
+    if (got < 0) got = 0;
+    // Always hand the SBC encoder a COMPLETE PCM buffer. A short read would
+    // become a truncated SBC frame -> audible clicks. Pad the remainder with
+    // silence so the media task can never underrun or glitch.
+    if (got < length)
+        memset(data + got, 0, length - got);
+    sink_frames_consumed += length / 4;
+    return length;
 }
 
 // ── Bluetooth connection callbacks ────────────────────────────
@@ -253,8 +259,10 @@ void loop(void)
             rate_win_start = millis();
         }
 
-        // Step: input frames per output frame, to reach the nominal sink rate.
-        resample_step = (float)input_hz / SINK_TARGET_HZ;
+        // Step: input frames per output frame, to reach the nominal sink rate,
+        // trimmed by the buffer-level servo (servo_scale) so the buffer stays
+        // near target without clicky drop/duplicate bursts.
+        resample_step = (float)input_hz / SINK_TARGET_HZ * servo_scale;
 
         // Phase-continuous linear-interpolation resampler. src_pos is a global
         // fractional input position carried across blocks for continuity.
@@ -274,36 +282,36 @@ void loop(void)
         src_pos -= in_frames;                // carry remainder into next input block
 
         if (out_frames > 0) {
-            memcpy(last_sent_frame, &resampled[(out_frames-1)*2], 4);
-            xStreamBufferSend(a2dp_buf, resampled, out_frames * 4, 0);
+            // Small timeout instead of 0: if the buffer is momentarily full we
+            // wait for the sink to drain a little rather than throwing away an
+            // entire block (which caused ~46ms audio gaps).
+            xStreamBufferSend(a2dp_buf, resampled, out_frames * 4, pdMS_TO_TICKS(20));
         }
     }
 
-    // Level control keeps the buffer near a healthy target. It only acts
-    // outside a dead-band, so steady playback is silent. After a format switch
-    // (or connect) it restores the cushion by dropping a few frames when too
-    // high, or duplicating the last frame when too low (so the sink is never
-    // starved -> no noise/gaps).
-    static long guard_drops = 0;
-    static uint32_t last_guard = 0;
-    if (millis() - last_guard >= 250) {
+    // Rate servo — replaces the old drop/duplicate burst guard. It nudges the
+    // resampler ratio very slightly to keep the buffer near target. Correcting
+    // 128-frame bursts repeatedly produces clicks; a slow (<0.1%) change in the
+    // interpolation ratio is inaudible.
+    static float servo_integr = 0.0f;
+    static bool  servo_inited = false;
+    static uint32_t last_servo = 0;
+    if (millis() - last_servo >= 200) {
         int fill = (int)xStreamBufferBytesAvailable(a2dp_buf);
         int target = (int)(A2DP_BUF_SIZE * 70 / 100);          // 70% cushion
-        int deadband = (int)(A2DP_BUF_SIZE * 0.10f);           // +-10%
-        if (fill > target + deadband) {
-            int frames = (fill - target) / 4;
-            if (frames > 128) frames = 128;
-            for (int i = 0; i < frames; i++)
-                xStreamBufferReceive(a2dp_buf, read_buf, 4, 0);
-            guard_drops += frames;
-        } else if (fill < target - deadband) {
-            int frames = (target - fill) / 4;
-            if (frames > 128) frames = 128;
-            for (int i = 0; i < frames; i++)
-                xStreamBufferSend(a2dp_buf, (uint8_t*)last_sent_frame, 4, 0);
-            guard_drops -= frames;
+        float error = (float)(fill - target) / (float)A2DP_BUF_SIZE; // -1..+1
+        if (!servo_inited) {
+            servo_integr = 0.0f;
+            servo_inited = true;
         }
-        last_guard = millis();
+        servo_integr += 0.00004f * error;                      // slow integral
+        if (servo_integr >  0.02f) servo_integr =  0.02f;
+        if (servo_integr < -0.02f) servo_integr = -0.02f;
+        float factor = 1.0f + servo_integr + 0.0008f * error;  // small proportional
+        if (factor > 1.05f) factor = 1.05f;
+        if (factor < 0.95f) factor = 0.95f;
+        servo_scale = factor;
+        last_servo = millis();
     }
 
     // Button → reconnect BT: force a fresh discovery (instead of always
@@ -347,12 +355,13 @@ void loop(void)
         uint32_t dt = millis() - last_print;
         uint32_t sinkHz = (sink_frames_consumed - last_sink) * 1000UL / dt;
         uint32_t inHz   = input_frames_since_print * 1000UL / dt;
-        Serial.printf("inHz=%u sinkHz=%u | buf: %d/%d | adj=%ld | BT: %s\n",
+        Serial.printf("inHz=%u sinkHz=%u | buf: %d/%d | sv=%d.%04d | BT: %s\n",
                       inHz, sinkHz,
                       (int)xStreamBufferBytesAvailable(a2dp_buf),
-                      (int)A2DP_BUF_SIZE, guard_drops,
+                      (int)A2DP_BUF_SIZE,
+                      (int)servo_scale,
+                      (int)(servo_scale * 10000) % 10000,
                       bt_state == ESP_A2D_CONNECTION_STATE_CONNECTED ? "Connected" : "waiting");
-        guard_drops = 0;
         input_frames_since_print = 0;
         last_sink  = sink_frames_consumed;
         last_print = millis();
