@@ -10,7 +10,9 @@ Once paired, it will re-connect on boot to the last paired device.
 
 Pin-Mapping
 -----------
-ESP32 M5Atom <->      Martendo
+ESP32 M5Atom <->      Martendo32
+
+VCC5         <->      VCC5
 
 GND          <->      GND	
 
