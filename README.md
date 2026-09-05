@@ -34,3 +34,11 @@ GPIO 27      ->       Status LED (SK6812, NEOPIXEL LED)
  - orange pulse — connecting
  - purple pulse — disconnecting
  - red pulse — searching
+
+
+
+<img width="1024" height="768" alt="image" src="https://github.com/user-attachments/assets/d76b0194-4e14-4205-93d6-8873f79e31a2" />
+
+
+<img width="1024" height="768" alt="image" src="https://github.com/user-attachments/assets/e14df0d5-c57d-4b40-8a42-918e1a69a7f6" />
+
