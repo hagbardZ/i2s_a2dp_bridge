@@ -18,6 +18,13 @@
 // ── Bluetooth ─────────────────────────────────────────────────
 #define BT_DEVICE_NAME  "M5-Echo-Retro"
 
+// ── Fixed sample rate (optional) ──────────────────────────────
+// Uncomment and set to lock the software to a single sample rate
+// (e.g. 44100, 48000). When defined, the input-rate scanner is
+// disabled and the software only works at the given rate.
+// When commented out, the software auto-detects the input rate.
+//#define FIXED_SAMPLE_RATE 44100
+
 // ── Tuning ────────────────────────────────────────────────────
 #define A2DP_BUF_SIZE       16384
 #define I2S_READ_BYTES      2048
@@ -27,8 +34,13 @@ static BluetoothA2DPSource a2dp_source;
 static StreamBufferHandle_t a2dp_buf;
 static Adafruit_NeoPixel   led(1, PIN_LED, NEO_GRB + NEO_KHZ800);
 
+#ifdef FIXED_SAMPLE_RATE
+static volatile uint32_t input_hz            = FIXED_SAMPLE_RATE;
+#define SINK_TARGET_HZ  ((float)FIXED_SAMPLE_RATE)
+#else
 static volatile uint32_t input_hz            = 44100;   // live-measured input rate (smoothed)
 #define SINK_TARGET_HZ  44100.0f                          // nominal sink rate
+#endif
 static volatile bool     audio_detected      = false;
 static volatile bool     user_disconnect_req  = false;  // set when button forces a switch
 static esp_bd_addr_t     current_peer;                  // MAC of the sink we are paired to
@@ -187,7 +199,11 @@ void setup(void)
     // I2S0 RX — slave mode (retro-go provides BCK & WS)
     i2s_config_t rx_cfg = {};
     rx_cfg.mode                 = (i2s_mode_t)(I2S_MODE_SLAVE | I2S_MODE_RX);
+#ifdef FIXED_SAMPLE_RATE
+    rx_cfg.sample_rate          = FIXED_SAMPLE_RATE;
+#else
     rx_cfg.sample_rate          = 44100;
+#endif
     rx_cfg.bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT;
     rx_cfg.channel_format       = I2S_CHANNEL_FMT_RIGHT_LEFT;
     rx_cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
@@ -230,6 +246,7 @@ void loop(void)
         in_frames = bytes_read / 4;
         input_frames_since_print += in_frames;
 
+#ifndef FIXED_SAMPLE_RATE
         // Live input-rate measurement (1 s window), low-pass filtered to stop
         // per-second quantization jitter from pitching the audio. retro-go
         // switches format (48k / 44.1k / lower), so we adapt to what's present.
@@ -258,6 +275,9 @@ void loop(void)
             measured_rate = hz;
             rate_win_start = millis();
         }
+#else
+        audio_detected = true;
+#endif
 
         // Step: input frames per output frame, to reach the nominal sink rate,
         // trimmed by the buffer-level servo (servo_scale) so the buffer stays
