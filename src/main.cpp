@@ -13,6 +13,7 @@
 
 #define PIN_BTN         39  // press this button to pair a new device
 #define PIN_LED         27      // SK6812 RGB LED (NEOPIXEL)
+#define PIN_STATUS_LED  13      // plain status LED (flash rate = BT state)
 
 
 // ── Bluetooth ─────────────────────────────────────────────────
@@ -99,6 +100,46 @@ static void led_update(void) {
         default:
             led_set(pulse, 0, 0);                          // red pulse — searching
             break;
+    }
+}
+
+// ── Plain status LED (GPIO13) ────────────────────────────────
+// Connected = steady ON; otherwise the flash rate encodes the state:
+//   connecting   -> medium blink  (250 ms)
+//   disconnecting-> slow blink    (500 ms)
+//   disconnected -> fast blink    (100 ms)
+// Called every loop iteration; millis()-based so it never blocks audio.
+static void status_led_update(void) {
+    static uint32_t last_toggle = 0;
+    static bool     on = false;
+    bool     steady_on = false;
+    uint32_t period_ms = 0;
+
+    switch (bt_state) {
+        case ESP_A2D_CONNECTION_STATE_CONNECTED:
+            steady_on = true;
+            break;
+        case ESP_A2D_CONNECTION_STATE_CONNECTING:
+            period_ms = 250;
+            break;
+        case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
+            period_ms = 500;
+            break;
+        case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
+        default:
+            period_ms = 100;
+            break;
+    }
+
+    if (steady_on) {
+        if (!on) {
+            on = true;
+            digitalWrite(PIN_STATUS_LED, HIGH);
+        }
+    } else if (millis() - last_toggle >= period_ms) {
+        last_toggle = millis();
+        on = !on;
+        digitalWrite(PIN_STATUS_LED, on ? HIGH : LOW);
     }
 }
 
@@ -190,6 +231,8 @@ void setup(void)
                   PIN_RX_BCK, PIN_RX_WS, PIN_RX_DATA);
 
     pinMode(PIN_BTN, INPUT_PULLUP);
+    pinMode(PIN_STATUS_LED, OUTPUT);
+    digitalWrite(PIN_STATUS_LED, LOW);
     led.begin();
     led.setBrightness(32);
     led_set(64, 0, 0);  // red while booting
@@ -388,4 +431,5 @@ void loop(void)
     }
 
     delay(1);
+    status_led_update();
 }
