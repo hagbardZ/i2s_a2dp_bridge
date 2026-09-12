@@ -14,10 +14,16 @@
 #define PIN_BTN         39  // press this button to pair a new device
 #define PIN_LED         27      // SK6812 RGB LED (NEOPIXEL)
 #define PIN_STATUS_LED  13      // plain status LED (flash rate = BT state)
+// PLAIN LED STATE
+// connected = ON
+// connecting = medium blink 250ms
+// Disconnecting = slow blink 500ms
+// Disconneced= fast blink 100ms
+
 
 
 // ── Bluetooth ─────────────────────────────────────────────────
-#define BT_DEVICE_NAME  "M5-Echo-Retro"
+#define BT_DEVICE_NAME  "MARTENDO32-BLUE"
 
 // ── Fixed sample rate (optional) ──────────────────────────────
 // Uncomment and set to lock the software to a single sample rate
