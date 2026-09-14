@@ -11,9 +11,9 @@
 #define PIN_RX_WS       33
 #define PIN_RX_DATA     22
 
-#define PIN_BTN         39  // press this button to pair a new device
+#define PIN_BTN         4   // press this button to pair a new device
 #define PIN_LED         27      // SK6812 RGB LED (NEOPIXEL)
-#define PIN_STATUS_LED  12      // plain status LED (flash rate = BT state)
+#define PIN_STATUS_LED  13      // plain status LED (flash rate = BT state)
 // PLAIN LED STATE
 // connected = ON
 // connecting = medium blink 250ms
@@ -177,8 +177,7 @@ static void on_bt_state_changed(esp_a2d_connection_state_t state, void*) {
                   state == ESP_A2D_CONNECTION_STATE_CONNECTING   ? "Connecting" :
                   state == ESP_A2D_CONNECTION_STATE_DISCONNECTING? "Disconnecting" : "?");
     if (state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-        Serial.printf("[BT] Negotiated sink sample rate: %d Hz\n",
-                      a2dp_source.get_source_sample_rate());
+        Serial.println("[BT] Sink connected");
         // Re-enable auto-reconnect now that we are paired with a real sink, so
         // a future drop (or reboot) healthily reconnects to this device. This
         // is deliberately NOT done in the button handler (see there for why).
