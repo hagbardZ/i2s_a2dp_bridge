@@ -13,7 +13,7 @@
 
 #define PIN_BTN         39  // press this button to pair a new device
 #define PIN_LED         27      // SK6812 RGB LED (NEOPIXEL)
-#define PIN_STATUS_LED  13      // plain status LED (flash rate = BT state)
+#define PIN_STATUS_LED  12      // plain status LED (flash rate = BT state)
 // PLAIN LED STATE
 // connected = ON
 // connecting = medium blink 250ms
